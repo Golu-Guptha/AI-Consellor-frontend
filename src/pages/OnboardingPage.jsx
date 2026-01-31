@@ -854,10 +854,17 @@ SOP: ${formData.sop_status || 'Not Started'}
 
                                 <button
                                     onClick={handleSubmit}
-                                    disabled={!formData.budget_max || !formData.target_degree}
-                                    className="w-full mt-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-lg font-bold shadow-lg shadow-green-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    disabled={loading || !formData.budget_max || !formData.target_degree}
+                                    className="w-full mt-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-lg font-bold shadow-lg shadow-green-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                                 >
-                                    Complete Profile ✓
+                                    {loading ? (
+                                        <>
+                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            <span>Completing...</span>
+                                        </>
+                                    ) : (
+                                        'Complete Profile ✓'
+                                    )}
                                 </button>
                             </div>
                         </div>
