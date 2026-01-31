@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 250 100% 60%;
+    --color-primary-dark: 250 100% 50%;
+    --color-secondary: 290 100% 60%;
+    --color-accent: 45 100% 55%;
+    --color-bg: 240 10% 3.9%;
+    --color-bg-secondary: 240 5% 8%;
+    --color-text: 0 0% 98%;
+    --color-text-muted: 240 5% 64.9%;
+    --color-border: 240 3.7% 15.9%;
+    --color-success: 142 76% 36%;
+    --color-warning: 38 92% 50%;
+    --color-error: 0 85% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-[hsl(var(--color-bg))] text-[hsl(var(--color-text))] antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+}
+
+@layer components {
+  /* Button Styles */
+  .btn {
+    @apply px-6 py-3 rounded-lg font-medium transition-all duration-200 inline-flex items-center justify-center gap-2;
+  }
+
+  .btn-primary {
+    @apply bg-gradient-to-r from-[hsl(var(--color-primary))] to-[hsl(var(--color-secondary))] text-white hover:opacity-90 hover:scale-105 shadow-lg;
+  }
+
+  .btn-secondary {
+    @apply bg-[hsl(var(--color-bg-secondary))] text-[hsl(var(--color-text))] border border-[hsl(var(--color-border))] hover:bg-[hsl(var(--color-bg-secondary))]/80;
+  }
+
+  .btn-ghost {
+    @apply hover:bg-[hsl(var(--color-bg-secondary))] text-[hsl(var(--color-text-muted))] hover:text-[hsl(var(--color-text))];
+  }
+
+  /* Card Styles */
+  .card {
+    @apply bg-[hsl(var(--color-bg-secondary))] border border-[hsl(var(--color-border))] rounded-xl p-6 shadow-lg;
+  }
+
+  .card-hover {
+    @apply transition-all duration-200 hover:border-[hsl(var(--color-primary))]/50 hover:shadow-xl hover:scale-[1.02];
+  }
+
+  /* Input Styles */
+  .input {
+    @apply w-full px-4 py-3 bg-[hsl(var(--color-bg))] border border-[hsl(var(--color-border))] rounded-lg text-[hsl(var(--color-text))] placeholder:text-[hsl(var(--color-text-muted))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--color-primary))]/50 transition-all;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-[hsl(var(--color-text))] mb-2;
+  }
+
+  /* Badge Styles */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+ }
+
+  .badge-dream {
+    @apply bg-[hsl(var(--color-secondary))]/20 text-[hsl(var(--color-secondary))] border border-[hsl(var(--color-secondary))]/30;
+  }
+
+  .badge-target {
+    @apply bg-[hsl(var(--color-primary))]/20 text-[hsl(var(--color-primary))] border border-[hsl(var(--color-primary))]/30;
+  }
+
+  .badge-safe {
+    @apply bg-[hsl(var(--color-success))]/20 text-[hsl(var(--color-success))] border border-[hsl(var(--color-success))]/30;
+  }
+
+  /* Glass Effect */
+  .glass {
+    @apply bg-[hsl(var(--color-bg-secondary))]/40 backdrop-blur-xl border border-[hsl(var(--color-border))]/50;
+  }
+
+  /* Gradient Text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-[hsl(var(--color-primary))] via-[hsl(var(--color-secondary))] to-[hsl(var(--color-accent))] bg-clip-text text-transparent;
+  }
+
+  /* Loading Spinner */
+  .spinner {
+    @apply inline-block w-6 h-6 border-4 border-[hsl(var(--color-border))] border-t-[hsl(var(--color-primary))] rounded-full animate-spin;
+  }
+}
+
+@layer utilities {
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Animations */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}

@@ -1,0 +1,208 @@
+import NavigationLayout from '../components/NavigationLayout';
+import { useState } from 'react';
+import api from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
+
+export default function UniversityDiscoveryPageWrapped() {
+    return (
+        <NavigationLayout>
+            <UniversityDiscoveryPage />
+        </NavigationLayout>
+    );
+}
+
+function UniversityDiscoveryPage() {
+    const [searchParams, setSearchParams] = useState({
+        name: '',
+        country: '',
+        minTuition: '',
+        maxTuition: ''
+    });
+    const [universities, setUniversities] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [searched, setSearched] = useState(false);
+
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        if (!searchParams.name && !searchParams.country) {
+            setError('Please enter university name or country');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+        setSearched(true);
+
+        try {
+            const params = {};
+            if (searchParams.name) params.name = searchParams.name;
+            if (searchParams.country) params.country = searchParams.country;
+            if (searchParams.minTuition) params.minTuition = searchParams.minTuition;
+            if (searchParams.maxTuition) params.maxTuition = searchParams.maxTuition;
+
+            const response = await api.get('/api/university/search', { params });
+            setUniversities(response.data.universities || []);
+        } catch (err) {
+            setError(err.response?.data?.error?.message || 'Search failed');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAddToShortlist = async (universityId, category = 'TARGET') => {
+        try {
+            await api.post('/api/shortlist', { university_id: universityId, category });
+            alert('Added to shortlist!');
+        } catch (err) {
+            alert(err.response?.data?.error?.message || 'Failed to add');
+        }
+    };
+
+    return (
+        <div className=\"p-8\">
+            <h1 className=\"text-3xl font-bold mb-6\">🔍 Discover Universities</h1>
+
+            {/* Search Form */}
+            <div className=\"card mb-8\">
+                <form onSubmit={handleSearch} className=\"space-y-4\">
+                    <div className=\"grid md:grid-cols-2 gap-4\">
+                        <div>
+                            <label className=\"label\">University Name</label>
+                            <input
+                                type=\"text\"
+                                className=\"input\"
+                                value={searchParams.name}
+                                onChange={(e) => setSearchParams({ ...searchParams, name: e.target.value })}
+                                placeholder=\"e.g., Stanford\"
+                            />
+                        </div>
+                        <div>
+                            <label className=\"label\">Country</label>
+                            <input
+                                type=\"text\"
+                                className=\"input\"
+                                value={searchParams.country}
+                                onChange={(e) => setSearchParams({ ...searchParams, country: e.target.value })}
+                                placeholder=\"e.g., United States\"
+                            />
+                        </div>
+                    </div>
+
+                    <div className=\"grid md:grid-cols-2 gap-4\">
+                        <div>
+                            <label className=\"label\">Min Tuition (USD/year)</label>
+                            <input
+                                type=\"number\"
+                                className=\"input\"
+                                value={searchParams.minTuition}
+                                onChange={(e) => setSearchParams({ ...searchParams, minTuition: e.target.value })}
+                                placeholder=\"Optional\"
+                            />
+                        </div>
+                        <div>
+                            <label className=\"label\">Max Tuition (USD/year)</label>
+                            <input
+                                type=\"number\"
+                                className=\"input\"
+                                value={searchParams.maxTuition}
+                                onChange={(e) => setSearchParams({ ...searchParams, maxTuition: e.target.value })}
+                                placeholder=\"Optional\"
+                            />
+                        </div>
+                    </div>
+
+                    <button type=\"submit\" className=\"btn btn-primary w-full md:w-auto\" disabled={loading}>
+                        {loading ? <span className=\"spinner\"></span> : 'Search Universities'}
+                    </button>
+                </form>
+            </div>
+
+            {error && (
+                <div className=\"mb-6 bg-[hsl(var(--color-error))]/10 border border-[hsl(var(--color-error))]/30 text-[hsl(var(--color-error))] p-4 rounded-lg\">
+                    {error}
+                </div>
+            )}
+
+            {/* Results */}
+            {loading && <LoadingSpinner message=\"Searching universities...\" />}
+
+            {!loading && searched && universities.length === 0 && (
+                <div className=\"card text-center py-12\">
+                    <div className=\"text-5xl mb-4\">🔍</div>
+                    <h3 className=\"text-xl font-bold mb-2\">No universities found</h3>
+                    <p className=\"text-[hsl(var(--color-text-muted))]\">
+                        Try adjusting your search criteria
+                    </p>
+                </div>
+            )}
+
+            {!loading && universities.length > 0 && (
+                <div>
+                    <div className=\"flex justify-between items-center mb-4\">
+                        <h2 className=\"text-xl font-bold\">{universities.length} universities found</h2>
+                    </div>
+
+                    <div className=\"grid md:grid-cols-2 lg:grid-cols-3 gap-6\">
+                        {universities.map((uni) => (
+                            <div key={uni.id} className=\"card card-hover\">
+                                <div className=\"flex justify-between items-start mb-3\">
+                                    <h3 className=\"font-bold text-lg line-clamp-2\">{uni.name}</h3>
+                                </div>
+
+                                <div className=\"space-y-2 text-sm mb-4\">
+                                    <div className=\"flex items-center gap-2\">
+                                        <span className=\"text-[hsl(var(--color-text-muted))]\">📍</span>
+                                        <span>{uni.country}</span>
+                                    </div>
+
+                                    {uni.tuition_estimate && (
+                                        <div className=\"flex items-center gap-2\">
+                                            <span className=\"text-[hsl(var(--color-text-muted))]\">💰</span>
+                                            <span>${uni.tuition_estimate?.toLocaleString()}/year</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className=\"flex gap-2\">
+                                    <button
+                                        onClick={() => handleAddToShortlist(uni.id, 'DREAM')}
+                                        className=\"btn btn-ghost text-xs flex-1\"
+                                        title=\"Add as Dream\"
+                                    >
+                                        🌟 Dream
+                                    </button>
+                                    <button
+                                        onClick={() => handleAddToShortlist(uni.id, 'TARGET')}
+                                        className=\"btn btn-ghost text-xs flex-1\"
+                                        title=\"Add as Target\"
+                                    >
+                                        🎯 Target
+                                    </button>
+                                    <button
+                                        onClick={() => handleAddToShortlist(uni.id, 'SAFE')}
+                                        className=\"btn btn-ghost text-xs flex-1\"
+                                        title=\"Add as Safe\"
+                                    >
+                                        ✅ Safe
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {!searched && (
+                <div className=\"card text-center py-12\">
+                    <div className=\"text-5xl mb-4\">🎓</div>
+                    <h3 className=\"text-xl font-bold mb-2\">Search 17,000+ Universities</h3>
+                    <p className=\"text-[hsl(var(--color-text-muted))]\">
+                        Enter a university name or country to get started
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+}
