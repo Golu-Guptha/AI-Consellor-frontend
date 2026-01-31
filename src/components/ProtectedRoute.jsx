@@ -6,7 +6,7 @@ export default function ProtectedRoute({ children, requireProfile = false, requi
     const { user, loading: authLoading } = useAuth();
     const { profile, loading: profileLoading, locks } = useProfile();
 
-    if (authLoading || profileLoading) {
+    if (authLoading || ((requireProfile || requireLock) && profileLoading)) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="spinner"></div>
