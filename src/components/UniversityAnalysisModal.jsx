@@ -71,32 +71,31 @@ export default function UniversityAnalysisModal({ university, onClose }) {
                                 <p className="text-xl font-bold">
                                     {(() => {
                                         const ba = analysis.budget_analysis;
-                                        // Try explicit values first
+                                        // Prefer explicit tuition value, then university data
                                         let val = ba.tuition ?? university.tuition_estimate;
 
-                                        // If missing but we have gap & budget, infer it
+                                        // If still 0 or undefined, try to infer from gap
                                         const userBudget = ba.user_budget ?? profile?.budget_max;
 
-                                        if ((val === undefined || val === null || val === 0) && userBudget && ba.gap !== undefined) {
+                                        if ((!val || val === 0) && userBudget && ba.gap !== undefined && ba.gap !== null) {
                                             if (!ba.within_budget) {
+                                                // Over budget: tuition = budget + gap
                                                 val = userBudget + ba.gap;
-                                            } else {
-                                                // If within budget, gap might be surplus (budget - tuition) or 0
-                                                // Usually gap logic in backend is max(0, tuition - budget) so gap is 0 if within budget.
-                                                // If gap is 0, we can't infer tuition exactly (could be anything <= budget).
-                                                // So we only infer if OVER budget (gap > 0).
-                                                if (ba.gap > 0) val = userBudget - ba.gap;
                                             }
                                         }
 
-                                        return val ? `$${Number(val).toLocaleString()}` : 'N/A';
+                                        return val && val > 0 ? `$${Number(val).toLocaleString()}` : 'Unavailable';
                                     })()}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-xs text-[hsl(var(--color-text-muted))] mb-1">Your Budget</p>
                                 <p className="text-xl font-bold">
-                                    ${(analysis.budget_analysis.user_budget ?? profile?.budget_max)?.toLocaleString() || 'N/A'}
+                                    {(() => {
+                                        const ba = analysis.budget_analysis;
+                                        const userBudget = ba.user_budget ?? profile?.budget_max;
+                                        return userBudget && userBudget > 0 ? `$${Number(userBudget).toLocaleString()}` : 'Not set';
+                                    })()}
                                 </p>
                             </div>
                         </div>
@@ -105,7 +104,7 @@ export default function UniversityAnalysisModal({ university, onClose }) {
                                 ⚠️ Over budget by ${analysis.budget_analysis.gap?.toLocaleString()}
                             </div>
                         )}
-                        {analysis.budget_analysis.within_budget && (
+                        {analysis.budget_analysis.within_budget && (analysis.budget_analysis.tuition ?? university.tuition_estimate) && (
                             <div className="bg-green-500/10 border border-green-500/30 text-green-600 p-3 rounded-lg mb-3 text-sm">
                                 ✅ Within your budget
                             </div>

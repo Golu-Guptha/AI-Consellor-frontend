@@ -31,19 +31,19 @@
 @layer components {
   /* Button Styles */
   .btn {
-    @apply px-6 py-3 rounded-lg font-medium transition-all duration-200 inline-flex items-center justify-center gap-2;
+    @apply px-6 py-3 rounded-lg font-medium transition-all duration-200 inline-flex items-center justify-center gap-2 active:scale-95;
   }
 
   .btn-primary {
-    @apply bg-gradient-to-r from-[hsl(var(--color-primary))] to-[hsl(var(--color-secondary))] text-white hover:opacity-90 hover:scale-105 shadow-lg;
+    @apply bg-gradient-to-r from-[hsl(var(--color-primary))] to-[hsl(var(--color-secondary))] text-white hover:opacity-90 hover:scale-105 active:scale-95 active:brightness-110 shadow-lg;
   }
 
   .btn-secondary {
-    @apply bg-[hsl(var(--color-bg-secondary))] text-[hsl(var(--color-text))] border border-[hsl(var(--color-border))] hover:bg-[hsl(var(--color-bg-secondary))]/80;
+    @apply bg-[hsl(var(--color-bg-secondary))] text-[hsl(var(--color-text))] border border-[hsl(var(--color-border))] hover:bg-[hsl(var(--color-bg-secondary))]/80 active:brightness-125;
   }
 
   .btn-ghost {
-    @apply hover:bg-[hsl(var(--color-bg-secondary))] text-[hsl(var(--color-text-muted))] hover:text-[hsl(var(--color-text))];
+    @apply hover:bg-[hsl(var(--color-bg-secondary))] text-[hsl(var(--color-text-muted))] hover:text-[hsl(var(--color-text))] active:bg-[hsl(var(--color-bg-secondary))]/80 active:text-[hsl(var(--color-text))];
   }
 
   /* Card Styles */

@@ -138,45 +138,69 @@ export default function ApplicationGuidancePage() {
                     </div>
 
                     {/* Add Task Form */}
+                    {/* Add Task Modal */}
                     {showAddTask && (
-                        <div className="card mb-8">
-                            <h3 className="font-bold mb-4">Create New Task</h3>
-                            <form onSubmit={handleCreateTask} className="space-y-4">
-                                <div>
-                                    <label className="label">Task Title *</label>
-                                    <input
-                                        type="text"
-                                        className="input"
-                                        value={newTask.title}
-                                        onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label">Description</label>
-                                    <textarea
-                                        className="input"
-                                        rows="3"
-                                        value={newTask.description}
-                                        onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                                    ></textarea>
-                                </div>
-                                <div>
-                                    <label className="label">Due Date</label>
-                                    <input
-                                        type="date"
-                                        className="input"
-                                        value={newTask.due_date}
-                                        onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
-                                    />
-                                </div>
-                                <div className="flex gap-3">
-                                    <button type="submit" className="btn btn-primary">Create Task</button>
-                                    <button type="button" onClick={() => setShowAddTask(false)} className="btn btn-secondary">
-                                        Cancel
+                        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowAddTask(false)}>
+                            <div
+                                className="bg-[hsl(var(--color-bg-secondary))] border border-[hsl(var(--color-border))] rounded-xl w-full max-w-2xl p-6 shadow-2xl relative animate-fade-in"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xl font-bold">Create New Task</h3>
+                                    <button
+                                        onClick={() => setShowAddTask(false)}
+                                        className="text-[hsl(var(--color-text-muted))] hover:text-[hsl(var(--color-text))] transition-colors text-2xl"
+                                    >
+                                        ×
                                     </button>
                                 </div>
-                            </form>
+
+                                <form onSubmit={handleCreateTask} className="space-y-4">
+                                    <div>
+                                        <label className="label">Task Title *</label>
+                                        <input
+                                            type="text"
+                                            className="input"
+                                            value={newTask.title}
+                                            onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                                            placeholder="e.g. Draft Statement of Purpose"
+                                            required
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="label">Description</label>
+                                        <textarea
+                                            className="input min-h-[100px]"
+                                            rows="3"
+                                            value={newTask.description}
+                                            onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                                            placeholder="Add details about this task..."
+                                        ></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="label">Due Date</label>
+                                        <input
+                                            type="date"
+                                            className="input"
+                                            value={newTask.due_date}
+                                            onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[hsl(var(--color-border))]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAddTask(false)}
+                                            className="btn btn-ghost"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button type="submit" className="btn btn-primary">
+                                            Create Task
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
                     )}
 

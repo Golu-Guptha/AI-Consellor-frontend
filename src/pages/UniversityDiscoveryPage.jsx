@@ -107,7 +107,10 @@ export default function UniversityDiscoveryPage() {
         } catch (err) {
             console.error('Analysis failed:', err);
             const errorMsg = err.response?.data?.message || err.message || 'Analysis failed';
-            alert(`Failed to analyze university: ${errorMsg}`);
+
+            // Show user-friendly error instead of default analysis
+            alert(`Could not analyze ${uni.name} at this time. The AI service may be temporarily busy. Please try again in a moment.`);
+
             setUniversities(prev => prev.map(u =>
                 u.id === uni.id ? { ...u, isAnalyzing: false } : u
             ));

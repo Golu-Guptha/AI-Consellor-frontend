@@ -1,13 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProfile } from '../context/ProfileContext';
-import api from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const COUNTRIES = ['United States', 'United Kingdom', 'Canada', 'Australia', 'Germany', 'France', 'Netherlands', 'Singapore', 'Ireland', 'New Zealand'];
 const EDUCATION_LEVELS = ['HS', 'Bachelors', 'Masters', 'MBA', 'PhD'];
 const TARGET_DEGREES = ['Bachelors', 'Masters', 'MBA', 'PhD'];
 const FUNDING_PLANS = ['Self-Funded', 'Scholarship', 'Loan', 'Mixed'];
+
+// Deterministic Bot Flow Configuration
+const BOT_FLOW = [
+    // Phase 1: Academic (steps 0-2)
+    { id: 0, phase: 1, question: "Hi there! 👋 Let's build your profile together. What is your current education level?", field: 'education_level', type: 'single', options: EDUCATION_LEVELS },
+    { id: 1, phase: 1, question: "Great! What is your major or field of study?", field: 'degree_major', type: 'text' },
+    { id: 2, phase: 1, question: "What is your GPA (out of 4.0)? You can skip this if you prefer.", field: 'gpa', type: 'number', optional: true, skipText: 'Skip' },
+
+    // Phase 2: Goals (steps 3-6)
+    { id: 3, phase: 2, question: "Perfect! Now let's talk about your goals. What degree are you targeting?", field: 'target_degree', type: 'single', options: TARGET_DEGREES },
+    { id: 4, phase: 2, question: "What field do you want to study?", field: 'field_of_study', type: 'text' },
+    { id: 5, phase: 2, question: "Which countries are you interested in? (Select all that apply)", field: 'preferred_countries', type: 'multi', options: COUNTRIES },
+    { id: 6, phase: 2, question: "What year are you planning to start?", field: 'intake_year', type: 'single', options: [new Date().getFullYear(), new Date().getFullYear() + 1, new Date().getFullYear() + 2] },
+
+    // Phase 3: Budget (steps 7-8)
+    { id: 7, phase: 3, question: "Let's discuss budget. What's your maximum budget per year (USD)?", field: 'budget_max', type: 'single', options: ['10000', '20000', '30000', '50000', '75000', '100000'], displayOptions: ['$10,000', '$20,000', '$30,000', '$50,000', '$75,000', '$100,000+'] },
+    { id: 8, phase: 3, question: "How will you fund your studies?", field: 'funding_plan', type: 'single', options: FUNDING_PLANS },
+
+    // Phase 4: Tests (steps 9-11)
+    { id: 9, phase: 4, question: "Almost done! Do you have an IELTS score?", field: 'ielts_score', type: 'number', optional: true, skipText: 'Not yet', placeholder: 'e.g., 7.5' },
+    { id: 10, phase: 4, question: "How about a TOEFL score?", field: 'toefl_score', type: 'number', optional: true, skipText: 'Not yet', placeholder: 'e.g., 105' },
+    { id: 11, phase: 4, question: "Do you have GRE or GMAT scores?", field: 'test_scores', type: 'single', options: ['GRE', 'GMAT', 'Both', 'None yet'], skipText: 'None yet' },
+    { id: 12, phase: 4, question: "What's your Statement of Purpose (SOP) status?", field: 'sop_status', type: 'single', options: ['NOT_STARTED', 'DRAFT', 'READY'], displayOptions: ['Not Started', 'Draft', 'Ready'] },
+
+    // Phase 5: Review (step 13)
+    { id: 13, phase: 5, question: 'REVIEW' }
+];
 
 export default function OnboardingPage() {
     const navigate = useNavigate();
@@ -19,15 +45,17 @@ export default function OnboardingPage() {
     // Mode State
     const [onboardingMode, setOnboardingMode] = useState('MANUAL'); // 'MANUAL' | 'AI'
 
-    // AI Chat State
-    const [messages, setMessages] = useState([{
-        role: 'assistant',
-        content: "Hi there! I'm your AI Counsellor. I can help you build your profile through a quick chat. \n\nTo get started, tell me: **What are you planning to study and where?** (e.g., 'I want to do a Masters in CS in the United States')"
-    }]);
+    // Bot Chat State (replaces AI state)
+    const [messages, setMessages] = useState([]);
+    const [currentStep, setCurrentStep] = useState(0);
+    const [botInput, setBotInput] = useState('');
+    const [selectedMultiOptions, setSelectedMultiOptions] = useState([]);
+    const [isReviewMode, setIsReviewMode] = useState(false);
+    const [editingField, setEditingField] = useState(null);
+
     const [isListening, setIsListening] = useState(false);
     const [recognition, setRecognition] = useState(null);
     const [interimTranscript, setInterimTranscript] = useState('');
-    const [aiInput, setAiInput] = useState('');
     const [speakingMessageId, setSpeakingMessageId] = useState(null);
     const [paused, setPaused] = useState(false);
     const messagesEndRef = useRef(null);
@@ -58,6 +86,18 @@ export default function OnboardingPage() {
         gmat_score: '',
         sop_status: 'NOT_STARTED'
     });
+
+    // Initialize bot conversation when switching to AI mode
+    useEffect(() => {
+        if (onboardingMode === 'AI' && messages.length === 0) {
+            const firstStep = BOT_FLOW[0];
+            setMessages([{
+                role: 'assistant',
+                content: firstStep.question
+            }]);
+            setCurrentStep(0);
+        }
+    }, [onboardingMode]);
 
     // Auto-scroll to bottom of chat
     useEffect(() => {
@@ -93,7 +133,7 @@ export default function OnboardingPage() {
                 }
                 setInterimTranscript(interimText);
                 if (finalText) {
-                    setAiInput(prev => prev + (prev ? ' ' : '') + finalText.trim());
+                    setBotInput(prev => prev + (prev ? ' ' : '') + finalText.trim());
                 }
             };
 
@@ -173,80 +213,181 @@ export default function OnboardingPage() {
         setSpeakingMessageId(idx);
     };
 
-    const [suggestedOptions, setSuggestedOptions] = useState(null); // { type: 'single'|'multiple', values: [] }
-    const [selectedOptions, setSelectedOptions] = useState([]);
+    // --- Bot Chat Logic (Deterministic) ---
+    const handleBotSend = (overrideInput = null) => {
+        const inputToSend = overrideInput || botInput;
+        // Convert to string and check if empty
+        const inputStr = String(inputToSend);
+        if (!inputStr.trim()) return;
 
-    // --- AI Chat Logic ---
-    const handleAISend = async (overrideInput = null) => {
-        const inputToSend = overrideInput || aiInput;
-        if (!inputToSend.trim() || loading) return;
+        const userMessage = inputStr;
+        setBotInput('');
+        setSelectedMultiOptions([]);
 
-        const userMessage = inputToSend;
-        setAiInput('');
-        setSuggestedOptions(null); // Clear options on send
-        setSelectedOptions([]);
-
+        // Add user message
         setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-        setLoading(true);
 
-        try {
-            const response = await api.post('/api/ai/reason', {
-                user_query: userMessage,
-                mode: 'ONBOARDING',
-                formData: formData // Send current context
-            });
+        // Determine next step
+        setTimeout(() => {
+            processUserInput(userMessage);
+        }, 300); // Small delay for smooth UX
+    };
 
-            const aiText = response.data.text;
-            const actions = response.data.actions || [];
+    const processUserInput = (userInput) => {
+        const step = BOT_FLOW[currentStep];
 
-            // Handle suggested options
-            if (response.data.suggested_options) {
-                setSuggestedOptions(response.data.suggested_options);
-            }
-
-            setMessages(prev => [...prev, { role: 'assistant', content: aiText }]);
-
-            // Play audio automatically for AI response in Onboarding mode for immersive experience
-            handleSpeak(aiText, messages.length + 1);
-
-            // Process Actions (State Updates)
-            actions.forEach(action => {
-                if (action.type === 'UPDATE_ONBOARDING_STATE') {
-                    console.log("Updating State:", action.payload);
-                    setFormData(prev => ({
-                        ...prev,
-                        ...action.payload
-                    }));
+        // Handle review mode
+        if (isReviewMode) {
+            if (userInput.toLowerCase() === 'no' || userInput.toLowerCase() === 'complete') {
+                // Complete profile
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "Perfect! Your profile is complete. Click 'Complete Profile' on the left to finish! ✅"
+                }]);
+                return;
+            } else if (userInput.toLowerCase() === 'yes') {
+                // Show editable fields
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "Which field would you like to edit? (Type the field name or select from options)"
+                }]);
+                return;
+            } else if (editingField) {
+                // User is editing a specific field
+                const fieldToEdit = BOT_FLOW.find(s => s.field === editingField);
+                if (fieldToEdit) {
+                    updateFormField(fieldToEdit.field, userInput, fieldToEdit.type);
+                    setEditingField(null);
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "Updated! Do you want to edit anything else?"
+                    }]);
                 }
-            });
+                return;
+            }
+        }
 
-        } catch (err) {
-            console.error(err);
-            setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I had a hiccup. Could you say that again?" }]);
-        } finally {
-            setLoading(false);
+        // Save the answer to formData
+        if (step.field) {
+            updateFormField(step.field, userInput, step.type);
+        }
+
+        // Check if we reached the end of questions
+        if (currentStep >= BOT_FLOW.length - 2) {
+            // Show review
+            showReview();
+        } else {
+            // Move to next question
+            moveToNextStep();
         }
     };
 
-    const handleOptionClick = (option) => {
-        if (!suggestedOptions) return;
-
-        if (suggestedOptions.type === 'single') {
-            // Single select: Immediate send
-            handleAISend(option);
+    const updateFormField = (field, value, type) => {
+        if (type === 'multi') {
+            // Multi-select from selectedMultiOptions
+            setFormData(prev => ({
+                ...prev,
+                [field]: selectedMultiOptions.length > 0 ? selectedMultiOptions : value.split(',').map(v => v.trim())
+            }));
+        } else if (type === 'number') {
+            const numVal = parseFloat(value);
+            setFormData(prev => ({
+                ...prev,
+                [field]: isNaN(numVal) ? '' : numVal
+            }));
+        } else if (field === 'budget_max') {
+            // Remove $ and commas
+            const cleanValue = value.replace(/[$,]/g, '').trim();
+            setFormData(prev => ({
+                ...prev,
+                [field]: cleanValue.replace('+', '')
+            }));
+        } else if (field === 'test_scores') {
+            // Handle test scores mapping
+            if (value === 'GRE' || value === 'Both') {
+                setFormData(prev => ({ ...prev, gre_score: 0 })); // Flag for later entry
+            }
+            if (value === 'GMAT' || value === 'Both') {
+                setFormData(prev => ({ ...prev, gmat_score: 0 })); // Flag for later entry
+            }
         } else {
-            // Multi select: Toggle selection
-            setSelectedOptions(prev =>
+            setFormData(prev => ({
+                ...prev,
+                [field]: value
+            }));
+        }
+    };
+
+    const moveToNextStep = () => {
+        const nextStepIndex = currentStep + 1;
+        if (nextStepIndex < BOT_FLOW.length) {
+            const nextStep = BOT_FLOW[nextStepIndex];
+            setCurrentStep(nextStepIndex);
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: nextStep.question
+            }]);
+
+            // Auto-speak for immersive experience
+            handleSpeak(nextStep.question, messages.length + 1);
+        }
+    };
+
+    const showReview = () => {
+        setIsReviewMode(true);
+        const summary = `
+🎉 Great! Let's review your profile:
+
+📚 **Academic**: ${formData.education_level || 'N/A'} in ${formData.degree_major || 'N/A'}
+${formData.gpa ? `GPA: ${formData.gpa}` : ''}
+
+🎯 **Goals**: ${formData.target_degree || 'N/A'} in ${formData.field_of_study || 'N/A'}
+📍 **Countries**: ${formData.preferred_countries?.join(', ') || 'N/A'}
+📅 **Intake**: ${formData.intake_year || 'N/A'}
+
+💰 **Budget**: $${formData.budget_max || 'N/A'}/year
+💳 **Funding**: ${formData.funding_plan || 'N/A'}
+
+📝 **Tests**: 
+${formData.ielts_score ? `IELTS: ${formData.ielts_score}` : ''}
+${formData.toefl_score ? `TOEFL: ${formData.toefl_score}` : ''}
+${formData.gre_score ? `GRE: ${formData.gre_score}` : ''}
+${formData.gmat_score ? `GMAT: ${formData.gmat_score}` : ''}
+SOP: ${formData.sop_status || 'Not Started'}
+
+**Do you want to make any edits?**
+        `.trim();
+
+        setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: summary
+        }]);
+    };
+
+    const handleOptionClick = (option, optionType) => {
+        if (optionType === 'multi') {
+            // Toggle multi-select
+            setSelectedMultiOptions(prev =>
                 prev.includes(option)
                     ? prev.filter(o => o !== option)
                     : [...prev, option]
             );
+        } else if (optionType === 'review') {
+            // Handle review actions
+            if (option === 'Complete') {
+                handleBotSend('complete');
+            } else if (option === 'Edit') {
+                handleBotSend('yes');
+            }
+        } else {
+            // Single select - immediately send
+            handleBotSend(option);
         }
     };
 
     const handleMultiSelectSubmit = () => {
-        if (selectedOptions.length === 0) return;
-        handleAISend(selectedOptions.join(', '));
+        if (selectedMultiOptions.length === 0) return;
+        handleBotSend(selectedMultiOptions.join(', '));
     };
 
     // --- Standard Handlers ---
@@ -788,63 +929,95 @@ export default function OnboardingPage() {
                                         </div>
                                     </div>
                                 ))}
-                                {loading && (
-                                    <div className="flex justify-start">
-                                        <div className="bg-gray-800 border border-gray-700 p-4 rounded-lg">
-                                            <div className="flex gap-1">
-                                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
                                 <div ref={messagesEndRef} />
                             </div>
 
                             {/* Input Area */}
                             <div className="p-4 bg-gray-800/50 border-t border-gray-700 relative">
-                                {/* Floating Options */}
-                                {suggestedOptions && (
-                                    <div className="mb-3 px-1 animate-slide-up">
-                                        <div className="flex flex-wrap gap-2 justify-end">
-                                            {(suggestedOptions.values || []).map((option) => {
-                                                const isSelected = selectedOptions.includes(option);
-                                                return (
+                                {/* Floating Options (Bot) */}
+                                {(() => {
+                                    const step = BOT_FLOW[currentStep];
+
+                                    // Review mode buttons
+                                    if (isReviewMode && !editingField) {
+                                        return (
+                                            <div className="mb-3 px-1 animate-slide-up">
+                                                <div className="flex flex-wrap gap-2 justify-end">
                                                     <button
-                                                        key={option}
-                                                        onClick={() => handleOptionClick(option)}
-                                                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all shadow-lg backdrop-blur-sm
-                                                            ${isSelected
-                                                                ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-purple-500/30'
-                                                                : 'bg-gray-800/90 text-gray-300 border border-gray-600 hover:bg-gray-700 hover:text-white hover:border-gray-500'
-                                                            }`}
+                                                        onClick={() => handleOptionClick('Complete', 'review')}
+                                                        className="px-6 py-3 rounded-full text-sm font-medium transition-all shadow-lg bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-500 hover:to-emerald-500"
                                                     >
-                                                        {option} {isSelected && '✓'}
+                                                        ✓ Complete Profile
                                                     </button>
-                                                );
-                                            })}
-                                        </div>
-                                        {suggestedOptions.type === 'multiple' && selectedOptions.length > 0 && (
-                                            <div className="flex justify-end mb-2">
-                                                <button
-                                                    onClick={handleMultiSelectSubmit}
-                                                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold shadow-lg hover:bg-green-500 transition-colors flex items-center gap-2"
-                                                >
-                                                    Confirm Selection ({selectedOptions.length}) →
-                                                </button>
+                                                    <button
+                                                        onClick={() => handleOptionClick('Edit', 'review')}
+                                                        className="px-6 py-3 rounded-full text-sm font-medium transition-all shadow-lg bg-gray-800/90 text-gray-300 border border-gray-600 hover:bg-gray-700 hover:text-white hover:border-gray-500"
+                                                    >
+                                                        ✏️ Edit
+                                                    </button>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                )}
+                                        );
+                                    }
+
+                                    // Step options
+                                    if (step && step.options && step.question !== 'REVIEW') {
+                                        const displayOpts = step.displayOptions || step.options;
+                                        const actualOpts = step.options;
+
+                                        return (
+                                            <div className="mb-3 px-1 animate-slide-up">
+                                                <div className="flex flex-wrap gap-2 justify-end">
+                                                    {displayOpts.map((option, idx) => {
+                                                        const isSelected = selectedMultiOptions.includes(actualOpts[idx] || option);
+                                                        const actualValue = actualOpts[idx] || option;
+
+                                                        return (
+                                                            <button
+                                                                key={actualValue}
+                                                                onClick={() => handleOptionClick(actualValue, step.type)}
+                                                                className={`px-4 py-2 rounded-full text-sm font-medium transition-all shadow-lg backdrop-blur-sm
+                                                                    ${isSelected
+                                                                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-purple-500/30'
+                                                                        : 'bg-gray-800/90 text-gray-300 border border-gray-600 hover:bg-gray-700 hover:text-white hover:border-gray-500'
+                                                                    }`}
+                                                            >
+                                                                {option} {isSelected && '✓'}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    {step.skipText && (
+                                                        <button
+                                                            onClick={() => handleBotSend(step.skipText)}
+                                                            className="px-4 py-2 rounded-full text-sm font-medium transition-all shadow-lg bg-gray-700/80 text-gray-400 border border-gray-600 hover:bg-gray-600 hover:text-gray-300"
+                                                        >
+                                                            {step.skipText}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                {step.type === 'multi' && selectedMultiOptions.length > 0 && (
+                                                    <div className="flex justify-end mt-2">
+                                                        <button
+                                                            onClick={handleMultiSelectSubmit}
+                                                            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold shadow-lg hover:bg-green-500 transition-colors flex items-center gap-2"
+                                                        >
+                                                            Confirm Selection ({selectedMultiOptions.length}) →
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })()}
 
                                 {/* Live Transcript Overlay */}
-                                {isListening && (interimTranscript || aiInput) && (
+                                {isListening && (interimTranscript || botInput) && (
                                     <div className="absolute bottom-full left-0 right-0 mb-2 px-4">
                                         <div className="bg-gradient-to-r from-purple-600/90 to-blue-600/90 backdrop-blur p-3 rounded-lg shadow-lg border border-purple-400/30 text-white">
                                             <p className="text-xs text-purple-200 mb-1">Recording...</p>
                                             <p>
-                                                {aiInput} <span className="text-purple-200 italic">{interimTranscript}</span>
+                                                {botInput} <span className="text-purple-200 italic">{interimTranscript}</span>
                                             </p>
                                         </div>
                                     </div>
@@ -879,16 +1052,22 @@ export default function OnboardingPage() {
 
                                     <input
                                         type="text"
-                                        value={aiInput}
-                                        onChange={(e) => setAiInput(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleAISend()}
-                                        placeholder="Type or speak (e.g., 'I want to study MS CS in UK...')"
+                                        value={botInput}
+                                        onChange={(e) => setBotInput(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleBotSend()}
+                                        placeholder={(() => {
+                                            const step = BOT_FLOW[currentStep];
+                                            if (step?.placeholder) return step.placeholder;
+                                            if (step?.type === 'text') return "Type your answer...";
+                                            if (step?.type === 'number') return "Enter a number...";
+                                            return "Type or use buttons above...";
+                                        })()}
                                         className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-4 focus:outline-none focus:border-purple-500 transition-colors"
                                     />
 
                                     <button
-                                        onClick={() => handleAISend()}
-                                        disabled={!aiInput.trim() || loading}
+                                        onClick={() => handleBotSend()}
+                                        disabled={!botInput.trim()}
                                         className="px-6 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         Send
