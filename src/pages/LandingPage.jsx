@@ -1,6 +1,21 @@
-import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export default function LandingPage() {
+    const { user, loading } = useAuth();
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (!loading && user) {
+            navigate('/onboarding');
+        }
+    }, [user, loading, navigate]);
+
+    if (loading) {
+        return <div className="min-h-screen bg-[hsl(var(--color-bg))] flex items-center justify-center">Loading...</div>;
+    }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--color-bg))] via-[hsl(var(--color-bg-secondary))] to-[hsl(var(--color-bg))]">
             {/* Hero Section */}
