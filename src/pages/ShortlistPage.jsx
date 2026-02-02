@@ -1,9 +1,32 @@
 import { useState, useEffect } from 'react';
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useProfile } from '../context/ProfileContext';
+import { useToast } from '../context/ToastContext';
 import NavigationLayout from '../components/NavigationLayout';
 import api from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+
+// Loading text component for animated dots
+const LoadingText = ({ text = "Locking" }) => {
+    const [dots, setDots] = React.useState("");
+
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            setDots(prev => prev.length >= 6 ? "" : prev + ".");
+        }, 300);
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <span className="inline-flex items-center min-w-[70px]">
+            {text}
+            <span className="inline-block w-[24px] text-left overflow-hidden ml-0.5">
+                {dots}
+            </span>
+        </span>
+    );
+};
 
 export default function ShortlistPage() {
     const [shortlist, setShortlist] = useState([]);
@@ -11,6 +34,8 @@ export default function ShortlistPage() {
     const [error, setError] = useState('');
     const { profile, refreshLocks, locks } = useProfile(); // For immediate dashboard update and profile timestamp
     const [isReanalyzing, setIsReanalyzing] = useState(false);
+    const [lockingUniversityId, setLockingUniversityId] = useState(null);
+    const { addToast } = useToast();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -52,10 +77,21 @@ export default function ShortlistPage() {
     };
 
     const handleUpdateCategory = async (id, newCategory) => {
+        // OPTIMISTIC UPDATE + TOAST: Show immediately
+        addToast(`Moved to ${newCategory} list`, 'success');
+
+        const previousShortlist = [...shortlist];
+        setShortlist(prev => prev.map(item =>
+            item.id === id ? { ...item, category: newCategory } : item
+        ));
+
         try {
             await api.patch(`/api/shortlist/${id}`, { category: newCategory });
-            await fetchShortlist();
+            // Success - no need to refetch, UI already updated
         } catch (err) {
+            // ROLLBACK + ERROR TOAST
+            setShortlist(previousShortlist);
+            addToast('Failed to update category', 'error');
             alert(err.response?.data?.error?.message || 'Failed to update');
         }
     };
@@ -63,10 +99,19 @@ export default function ShortlistPage() {
     const handleRemove = async (id) => {
         if (!confirm('Remove this university from your shortlist?')) return;
 
+        // OPTIMISTIC UPDATE + TOAST: Show immediately
+        addToast('Removed from shortlist', 'success');
+
+        const previousShortlist = [...shortlist];
+        setShortlist(prev => prev.filter(item => item.id !== id));
+
         try {
             await api.delete(`/api/shortlist/${id}`);
-            await fetchShortlist();
+            // Success - UI already updated
         } catch (err) {
+            // ROLLBACK + ERROR TOAST
+            setShortlist(previousShortlist);
+            addToast('Failed to remove university', 'error');
             alert(err.response?.data?.error?.message || 'Failed to remove');
         }
     };
@@ -74,23 +119,28 @@ export default function ShortlistPage() {
     const handleLock = async (universityId) => {
         if (!confirm('Lock this university? You will not be able to change your shortlist after locking.')) return;
 
+        // IMMEDIATE TOAST: Show before locking
+        addToast('Locking university...', 'info');
+
+        setLockingUniversityId(universityId);
         try {
             await api.post('/api/lock', {
                 university_id: universityId,
                 reason: 'User locked university from shortlist'
             });
 
-            // Immediately refresh locks to update dashboard
             await refreshLocks();
-
+            addToast('University locked successfully!', 'success');
             navigate('/application-guidance');
         } catch (err) {
-            // If already locked, just redirect
             if (err.response?.status === 409) {
                 navigate('/application-guidance');
                 return;
             }
+            addToast('Failed to lock university', 'error');
             alert(err.response?.data?.error?.message || 'Failed to lock');
+        } finally {
+            setLockingUniversityId(null);
         }
     };
 
@@ -167,6 +217,7 @@ export default function ShortlistPage() {
                                                 onRemove={handleRemove}
                                                 onLock={handleLock}
                                                 isLocked={locks?.some(l => l.university_id === item.university_id)}
+                                                isLocking={lockingUniversityId === item.university?.id}
                                                 onNavigate={() => navigate('/application-guidance')}
                                             />
                                         ))}
@@ -197,6 +248,7 @@ export default function ShortlistPage() {
                                                 onRemove={handleRemove}
                                                 onLock={handleLock}
                                                 isLocked={locks?.some(l => l.university_id === item.university_id)}
+                                                isLocking={lockingUniversityId === item.university?.id}
                                                 onNavigate={() => navigate('/application-guidance')}
                                             />
                                         ))}
@@ -227,6 +279,7 @@ export default function ShortlistPage() {
                                                 onRemove={handleRemove}
                                                 onLock={handleLock}
                                                 isLocked={locks?.some(l => l.university_id === item.university_id)}
+                                                isLocking={lockingUniversityId === item.university?.id}
                                                 onNavigate={() => navigate('/application-guidance')}
                                             />
                                         ))}
@@ -241,7 +294,7 @@ export default function ShortlistPage() {
     );
 }
 
-function UniversityCard({ item, onUpdateCategory, onRemove, onLock, isLocked, onNavigate }) {
+function UniversityCard({ item, onUpdateCategory, onRemove, onLock, isLocked, isLocking, onNavigate }) {
     const [showActions, setShowActions] = useState(false);
 
     // Calculate cost level based on tuition
@@ -325,7 +378,14 @@ function UniversityCard({ item, onUpdateCategory, onRemove, onLock, isLocked, on
         <div className="card relative">
             <div className="flex justify-between items-start mb-3">
                 <div className="flex-1">
-                    <h3 className="font-bold line-clamp-2">{item.university?.name}</h3>
+                    <div className="flex items-center gap-2">
+                        <h3 className="font-bold line-clamp-2">{item.university?.name}</h3>
+                        {isLocking && (
+                            <span className="inline-flex items-center px-2 py-1 bg-yellow-500/20 text-yellow-500 rounded text-xs font-medium animate-pulse">
+                                <LoadingText text="Locking" />
+                            </span>
+                        )}
+                    </div>
                     {item.ai_analysis && (
                         <span className="text-[10px] text-purple-400 font-medium flex items-center gap-1 mt-1">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -373,10 +433,14 @@ function UniversityCard({ item, onUpdateCategory, onRemove, onLock, isLocked, on
                         </button>
                     ) : (
                         <button
-                            onClick={() => { onLock(item.university?.id); setShowActions(false); }}
-                            className="w-full text-left px-3 py-2 rounded hover:bg-[hsl(var(--color-bg))] text-sm text-[hsl(var(--color-primary))]"
+                            onClick={() => { if (!isLocking) { onLock(item.university?.id); setShowActions(false); } }}
+                            disabled={isLocking}
+                            className={`w-full text-left px-3 py-2 rounded text-sm ${isLocking
+                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                : 'hover:bg-[hsl(var(--color-bg))] text-[hsl(var(--color-primary))]'
+                                }`}
                         >
-                            🔒 Lock
+                            {isLocking ? <LoadingText text="Locking" /> : '🔒 Lock'}
                         </button>
                     )}
                     <button

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useProfile } from '../context/ProfileContext';
+import { useToast } from '../context/ToastContext';
 import NavigationLayout from '../components/NavigationLayout';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -12,6 +13,7 @@ const FUNDING_PLANS = ['Self-Funded', 'Scholarship', 'Loan', 'Mixed'];
 export default function ProfileEditPage() {
     const navigate = useNavigate();
     const { profile, updateProfile, fetchProfile } = useProfile();
+    const { addToast } = useToast();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -86,6 +88,9 @@ export default function ProfileEditPage() {
         setError('');
         setSuccess(false);
 
+        // IMMEDIATE TOAST: Show before saving
+        addToast('Saving profile...', 'info');
+
         try {
             const profileData = {
                 ...formData,
@@ -100,9 +105,12 @@ export default function ProfileEditPage() {
 
             await updateProfile(profileData);
             setSuccess(true);
+            addToast('Profile saved successfully!', 'success');
             setTimeout(() => navigate('/dashboard'), 1500);
         } catch (err) {
-            setError(err.response?.data?.error?.message || 'Failed to update profile');
+            const errorMsg = err.response?.data?.error?.message || 'Failed to update profile';
+            setError(errorMsg);
+            addToast(`Error: ${errorMsg}`, 'error');
         } finally {
             setSaving(false);
         }

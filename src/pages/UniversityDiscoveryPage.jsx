@@ -4,6 +4,7 @@ import api from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AddUniversityModal from '../components/AddUniversityModal';
 import UniversityAnalysisModal from '../components/UniversityAnalysisModal';
+import { useToast } from '../context/ToastContext';
 
 export default function UniversityDiscoveryPage() {
     // Initialize state from sessionStorage if available
@@ -29,6 +30,7 @@ export default function UniversityDiscoveryPage() {
     const [error, setError] = useState('');
     const [isManualModalOpen, setIsManualModalOpen] = useState(false);
     const [selectedUniversity, setSelectedUniversity] = useState(null);
+    const { addToast } = useToast();
 
     // Save state to sessionStorage whenever it changes
     useEffect(() => {
@@ -118,11 +120,15 @@ export default function UniversityDiscoveryPage() {
     };
 
     const handleAddToShortlist = async (universityId, category = 'TARGET') => {
+        // IMMEDIATE TOAST: Show success immediately
+        const successMessage = `Added to ${category} list!`;
+        addToast(successMessage, 'success');
+
         try {
             await api.post('/api/shortlist', { university_id: universityId, category });
-            alert(`Added to ${category} list!`);
         } catch (err) {
-            alert(err.response?.data?.error?.message || 'Failed to add');
+            addToast('Failed to add to shortlist', 'error');
+            alert(err.response?.data?.error?.message || 'Failed to add. Please try again.');
         }
     };
 

@@ -1,11 +1,33 @@
 import { useState, useRef, useEffect } from 'react';
 import { useProfile } from '../context/ProfileContext';
+import { useToast } from '../context/ToastContext';
 import NavigationLayout from '../components/NavigationLayout';
 import ThinkingIndicator from '../components/ThinkingIndicator';
 import api from '../services/api';
 
+const LoadingText = ({ text = "Adding" }) => {
+    const [dots, setDots] = useState("");
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setDots(prev => prev.length >= 6 ? "" : prev + ".");
+        }, 300);
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <span className="inline-flex items-center min-w-[70px]">
+            {text}
+            <span className="inline-block w-[24px] text-left overflow-hidden ml-0.5">
+                {dots}
+            </span>
+        </span>
+    );
+};
+
 export default function AICounsellorPage() {
     const { profile, stage } = useProfile();
+    const { addToast } = useToast();
     // State for chat status
     // State for chat status
     const [messages, setMessages] = useState([]); // Removed default state, will load from DB or init new
@@ -19,15 +41,19 @@ export default function AICounsellorPage() {
     const [loadingConversations, setLoadingConversations] = useState(true);
 
     const [suggestedActions, setSuggestedActions] = useState([]);
+    const [executingActions, setExecutingActions] = useState({}); // Track which actions are currently executing
     const [recommendations, setRecommendations] = useState([]);
     const [reasoning, setReasoning] = useState(null);
     const [nextSteps, setNextSteps] = useState([]);
     const [activities, setActivities] = useState([]);
+    const [loadingActivities, setLoadingActivities] = useState(false);
     const [momentum, setMomentum] = useState(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isListening, setIsListening] = useState(false);
     const [recognition, setRecognition] = useState(null);
     const [interimTranscript, setInterimTranscript] = useState('');
     const messagesEndRef = useRef(null);
+    const textareaRef = useRef(null);
 
     // Text-to-Speech State
     const [speakingMessageId, setSpeakingMessageId] = useState(null);
@@ -107,11 +133,14 @@ export default function AICounsellorPage() {
 
     const fetchActivities = async () => {
         try {
+            setLoadingActivities(true);
             const response = await api.get('/api/activities');
             setActivities(response.data.activities || []);
             setMomentum(response.data.momentum);
         } catch (err) {
             console.error('Failed to fetch activities:', err);
+        } finally {
+            setLoadingActivities(false);
         }
     };
 
@@ -123,6 +152,15 @@ export default function AICounsellorPage() {
     useEffect(() => {
         scrollToBottom();
     }, [messages, suggestedActions, recommendations]);
+
+    // Auto-resize textarea based on content
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+            const newHeight = Math.min(Math.max(textareaRef.current.scrollHeight, 44), 200);
+            textareaRef.current.style.height = `${newHeight} px`;
+        }
+    }, [input]);
 
 
 
@@ -280,20 +318,29 @@ export default function AICounsellorPage() {
     };
 
     const handleExecuteAction = async (action) => {
+        // OPTIMISTIC UPDATE: Remove action immediately
+        addToast('Executing action...', 'info');
+        const previousActions = [...suggestedActions];
+        setSuggestedActions(prev => prev.filter(a => a !== action));
+
         try {
             const response = await api.post('/api/ai/execute-action', { action });
 
-            // Show success message with AI enrichment info
-            if (response.data.result?.ai_enriched) {
-                alert('✅ University added! (AI-enriched data used for detailed information)');
-            } else {
-                alert('✅ Action executed successfully!');
-            }
+            // Show success message (non-blocking)
+            const successMsg = response.data.result?.ai_enriched
+                ? 'University added! (AI-enriched data)'
+                : 'Action executed successfully!';
 
-            setSuggestedActions(prev => prev.filter(a => a !== action));
-            fetchActivities(); // Refresh activities after action
+            addToast(successMsg, 'success');
+
+            // Optimistically refresh activities
+            fetchActivities();
         } catch (err) {
+            // ROLLBACK: Restore action on error
+            setSuggestedActions(previousActions);
+
             const errorMsg = err.response?.data?.error?.message || 'Failed to execute action';
+            addToast(`Error: ${errorMsg}`, 'error');
             alert(`❌ ${errorMsg}`);
         }
     };
@@ -437,8 +484,13 @@ export default function AICounsellorPage() {
 
                     <div className="flex-1 overflow-y-auto space-y-2">
                         {loadingConversations ? (
-                            <div className="flex justify-center p-4">
-                                <span className="loading loading-spinner loading-sm"></span>
+                            <div className="space-y-2">
+                                {[1, 2, 3].map(i => (
+                                    <div key={i} className="p-3 rounded-lg bg-gray-800/30 border border-transparent animate-pulse">
+                                        <div className="h-4 bg-gray-700 rounded w-3/4 mb-2"></div>
+                                        <div className="h-3 bg-gray-700 rounded w-1/2"></div>
+                                    </div>
+                                ))}
                             </div>
                         ) : (
                             conversations.map(conv => (
@@ -482,8 +534,8 @@ export default function AICounsellorPage() {
 
                 {/* Right Sidebar and Main Chat remains largely the same logic, but we need to adjust layout container to fit 3 columns */}
 
-                {/* Center - Main Chat Area */}
-                <div className="flex-1 flex flex-col min-w-0 border-r border-[hsl(var(--color-border))]">
+                {/* Main Chat Area */}
+                <div className="flex-1 flex flex-col bg-[hsl(var(--color-bg-secondary))]">
                     {/* Header */}
                     <div className="p-6 border-b border-[hsl(var(--color-border))] flex justify-between items-center">
                         <div className="flex items-center gap-3">
@@ -507,7 +559,19 @@ export default function AICounsellorPage() {
                                 </p>
                             </div>
                         </div>
-                        {/* Mobile toggle for sidebars could go here */}
+                        {/* Recent Activity Toggle (when sidebar closed) */}
+                        {!isSidebarOpen && (
+                            <button
+                                onClick={() => setIsSidebarOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-all"
+                                title="Show Recent Activity"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                                <span className="text-sm font-medium">Recent Activity</span>
+                            </button>
+                        )}
                     </div>
 
                     {/* Chat Messages */}
@@ -698,9 +762,17 @@ export default function AICounsellorPage() {
                                                 </div>
                                                 <button
                                                     onClick={() => handleExecuteAction(action)}
-                                                    className="btn btn-primary btn-sm whitespace-nowrap"
+                                                    disabled={executingActions.includes(action)}
+                                                    className={`btn btn-primary btn-sm whitespace-nowrap transition-all duration-200 ${executingActions.includes(action)
+                                                        ? '!bg-gray-900 !border-gray-700 !text-gray-300 cursor-not-allowed'
+                                                        : ''
+                                                        }`}
                                                 >
-                                                    Execute
+                                                    {executingActions.includes(action) ? (
+                                                        <LoadingText text="Adding" />
+                                                    ) : (
+                                                        'Execute'
+                                                    )}
                                                 </button>
                                             </div>
                                         );
@@ -740,7 +812,7 @@ export default function AICounsellorPage() {
                             </div>
                         )}
 
-                        <div className="flex gap-3">
+                        <div className="flex gap-3 items-end">
                             <button
                                 onClick={toggleVoiceInput}
                                 disabled={isReasoning}
@@ -761,14 +833,20 @@ export default function AICounsellorPage() {
                                     </svg>
                                 )}
                             </button>
-                            <input
-                                type="text"
-                                className="input flex-1"
+                            <textarea
+                                ref={textareaRef}
+                                className="input flex-1 resize-none overflow-hidden min-h-[44px] max-h-[200px]"
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSend();
+                                    }
+                                }}
                                 placeholder="Ask me anything about studying abroad..."
                                 disabled={isReasoning}
+                                rows={1}
                             />
                             <button
                                 onClick={handleSend}
@@ -785,13 +863,25 @@ export default function AICounsellorPage() {
                 </div>
 
                 {/* Right Sidebar - Activity & Momentum */}
-                <div className="w-80 flex flex-col gap-4 p-4 overflow-y-auto bg-[hsl(var(--color-bg))]">
+                <div className={`w-80 flex flex-col gap-4 p-4 overflow-y-auto bg-[hsl(var(--color-bg))] transition-all duration-300 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full absolute right-0 top-0 h-full'
+                    }`}>
                     {/* Momentum Indicator (Reused) */}
                     {momentum && (
                         <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
-                            <h3 className="font-bold mb-3 flex items-center gap-2">
-                                🔥 Your Momentum
-                            </h3>
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="font-bold flex items-center gap-2">
+                                    🔥 Your Momentum
+                                </h3>
+                                <button
+                                    onClick={() => setIsSidebarOpen(false)}
+                                    className="p-1 hover:bg-gray-700 rounded transition-colors"
+                                    title="Hide sidebar"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
                             <div className="flex items-center gap-3 mb-2">
                                 <div className={`w-3 h-3 rounded-full ${getMomentumColor(momentum.momentum)}`}></div>
                                 <span className="font-bold text-lg">{momentum.momentum}</span>
@@ -811,7 +901,20 @@ export default function AICounsellorPage() {
                     <div className="flex-1 p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
                         <h3 className="font-bold mb-3">📊 Recent Activity</h3>
                         <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                            {activities.length > 0 ? activities.slice(0, 15).map((activity, idx) => (
+                            {loadingActivities ? (
+                                <div className="space-y-2">
+                                    {[1, 2, 3, 4, 5].map(i => (
+                                        <div key={i} className="flex items-start gap-2 p-2 bg-gray-700/50 rounded animate-pulse">
+                                            <div className="w-8 h-8 bg-gray-600 rounded"></div>
+                                            <div className="flex-1 space-y-2">
+                                                <div className="h-3 bg-gray-600 rounded w-3/4"></div>
+                                                <div className="h-3 bg-gray-600 rounded w-1/2"></div>
+                                            </div>
+                                            <div className="h-3 bg-gray-600 rounded w-12"></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : activities.length > 0 ? activities.slice(0, 15).map((activity, idx) => (
                                 <div key={idx} className="flex items-start gap-2 p-2 bg-gray-700/50 rounded text-sm">
                                     <span className="text-xl">{getActivityIcon(activity.activity_type)}</span>
                                     <div className="flex-1">

@@ -1,8 +1,31 @@
 import { useState, useEffect } from 'react';
+import React from 'react';
 import { useProfile } from '../context/ProfileContext';
 import NavigationLayout from '../components/NavigationLayout';
 import api from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useToast } from '../context/ToastContext';
+
+// Loading text component for animated dots
+const LoadingText = ({ text = "Removing" }) => {
+    const [dots, setDots] = React.useState("");
+
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            setDots(prev => prev.length >= 6 ? "" : prev + ".");
+        }, 300);
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <span className="inline-flex items-center min-w-[70px]">
+            {text}
+            <span className="inline-block w-[24px] text-left overflow-hidden ml-0.5">
+                {dots}
+            </span>
+        </span>
+    );
+};
 
 export default function ApplicationGuidancePage() {
     const { locks, refreshLocks, refreshTasks } = useProfile();
@@ -10,6 +33,8 @@ export default function ApplicationGuidancePage() {
     const [loading, setLoading] = useState(true);
     const [newTask, setNewTask] = useState({ title: '', description: '', due_date: '' });
     const [showAddTask, setShowAddTask] = useState(false);
+    const [unlockingLockId, setUnlockingLockId] = useState(null);
+    const { addToast } = useToast();
 
     useEffect(() => {
         fetchTasks();
@@ -28,19 +53,24 @@ export default function ApplicationGuidancePage() {
 
     const handleCreateTask = async (e) => {
         e.preventDefault();
+        addToast('Creating task...', 'info');
         try {
             await api.post('/api/tasks', newTask);
             setNewTask({ title: '', description: '', due_date: '' });
             setShowAddTask(false);
             await fetchTasks();
-            if (refreshTasks) refreshTasks(); // Update context for stage calculation
+            if (refreshTasks) refreshTasks();
+            addToast('Task created successfully!', 'success');
         } catch (err) {
+            addToast('Failed to create task', 'error');
             alert(err.response?.data?.error?.message || 'Failed to create task');
         }
     };
 
     const handleUpdateTask = async (id, updates) => {
-        // Optimistic update - update UI immediately
+        // OPTIMISTIC UPDATE: Save previous state and update UI immediately
+        addToast('Task updated', 'success');
+        const previousTasks = [...tasks];
         setTasks(prevTasks =>
             prevTasks.map(task =>
                 task.id === id ? { ...task, ...updates } : task
@@ -49,22 +79,22 @@ export default function ApplicationGuidancePage() {
 
         try {
             await api.patch(`/api/tasks/${id}`, updates);
-            // Refresh to ensure consistency with backend
-            await fetchTasks();
-            if (refreshTasks) refreshTasks(); // Update context for stage calculation
+            if (refreshTasks) refreshTasks();
         } catch (err) {
-            // Revert on error
-            await fetchTasks();
+            setTasks(previousTasks);
+            addToast('Failed to update task', 'error');
             alert(err.response?.data?.error?.message || 'Failed to update task');
         }
     };
 
     const handleDeleteTask = async (id) => {
         if (!confirm('Delete this task?')) return;
+        addToast('Task deleted', 'success');
         try {
             await api.delete(`/api/tasks/${id}`);
             await fetchTasks();
         } catch (err) {
+            addToast('Failed to delete task', 'error');
             alert(err.response?.data?.error?.message || 'Failed to delete task');
         }
     };
@@ -72,12 +102,18 @@ export default function ApplicationGuidancePage() {
     const handleUnlockUniversity = async (lockId, universityName) => {
         if (!confirm(`Unlock "${universityName}"? This will remove it from your application list.`)) return;
 
+        addToast('Removing university...', 'info');
+        setUnlockingLockId(lockId);
         try {
             await api.delete(`/api/lock/${lockId}`);
-            await refreshLocks(); // Refresh the locks in context
+            await refreshLocks();
+            addToast('University unlocked successfully!', 'success');
             alert('University unlocked successfully!');
         } catch (err) {
+            addToast('Failed to unlock university', 'error');
             alert(err.response?.data?.error?.message || 'Failed to unlock university');
+        } finally {
+            setUnlockingLockId(null);
         }
     };
 
@@ -123,6 +159,7 @@ export default function ApplicationGuidancePage() {
                                                 lock={lock}
                                                 onUnlock={handleUnlockUniversity}
                                                 onRefresh={refreshLocks}
+                                                isUnlocking={unlockingLockId === lock.id}
                                             />
                                         ))}
                                     </div>
@@ -287,9 +324,8 @@ export default function ApplicationGuidancePage() {
     );
 }
 
-import { useToast } from '../context/ToastContext';
 
-function UniversityGuidanceCard({ lock, onUnlock, onRefresh }) {
+function UniversityGuidanceCard({ lock, onUnlock, onRefresh, isUnlocking = false }) {
     const [expanded, setExpanded] = useState(false);
     const [guidance, setGuidance] = useState(lock.application_guidance || null);
     const [checklist, setChecklist] = useState(lock.document_checklist || []);
@@ -448,11 +484,15 @@ function UniversityGuidanceCard({ lock, onUnlock, onRefresh }) {
                 </div>
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={(e) => { e.stopPropagation(); onUnlock(lock.id, lock.university?.name); }}
-                        className="p-2 hover:bg-[hsl(var(--color-error))]/10 text-red-500 rounded-lg transition-colors"
-                        title="Unlock"
+                        onClick={(e) => { e.stopPropagation(); if (!isUnlocking) onUnlock(lock.id, lock.university?.name); }}
+                        disabled={isUnlocking}
+                        className={`px-3 py-2 rounded-lg transition-colors text-sm font-medium ${isUnlocking
+                            ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                            : 'hover:bg-[hsl(var(--color-error))]/10 text-red-500'
+                            }`}
+                        title={isUnlocking ? "Removing..." : "Unlock"}
                     >
-                        🔓
+                        {isUnlocking ? <LoadingText text="Removing" /> : '🔓 Unlock'}
                     </button>
                     <button className={`p-2 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}>
                         ▼
