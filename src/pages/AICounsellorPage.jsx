@@ -41,7 +41,7 @@ export default function AICounsellorPage() {
     const [loadingConversations, setLoadingConversations] = useState(true);
 
     const [suggestedActions, setSuggestedActions] = useState([]);
-    const [executingActions, setExecutingActions] = useState({}); // Track which actions are currently executing
+    const [executingActions, setExecutingActions] = useState([]); // Track which actions are currently executing
     const [recommendations, setRecommendations] = useState([]);
     const [reasoning, setReasoning] = useState(null);
     const [nextSteps, setNextSteps] = useState([]);
