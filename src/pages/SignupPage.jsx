@@ -33,6 +33,7 @@ export default function SignupPage() {
         setLoading(true);
         try {
             await signInWithGoogle();
+            navigate('/onboarding');
         } catch (err) {
             setError(err.message || 'Google sign-in failed');
             setLoading(false);
