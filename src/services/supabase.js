@@ -1,14 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://demo.supabase.co';
+const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://demo.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-key';
 
+// In production, use the Vercel proxy to bypass ISP blocks on supabase.co in India
+const isProduction = import.meta.env.PROD;
+const supabaseUrl = isProduction
+    ? `${window.location.origin}/supabase-proxy`
+    : rawSupabaseUrl;
+
 // Check if credentials are properly configured (not placeholder values)
-const isConfigured = supabaseUrl &&
+const isConfigured = rawSupabaseUrl &&
     supabaseAnonKey &&
-    !supabaseUrl.includes('your_') &&
+    !rawSupabaseUrl.includes('your_') &&
     !supabaseAnonKey.includes('your_') &&
-    supabaseUrl !== 'https://demo.supabase.co';
+    rawSupabaseUrl !== 'https://demo.supabase.co';
 
 if (!isConfigured) {
     console.warn('⚠️  Supabase not configured. Auth features will not work. Please set environment variables in .env file');
