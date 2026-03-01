@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 
 const AuthContext = createContext({});
@@ -89,85 +89,48 @@ export const AuthProvider = ({ children }) => {
         return data;
     };
 
-    const signInWithGoogle = () => {
-        return new Promise((resolve, reject) => {
-            const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-
-            if (!googleClientId) {
-                reject(new Error('Google Client ID not configured'));
-                return;
-            }
-
-            // Wait for Google Identity Services to load
-            const waitForGoogle = () => {
-                if (window.google?.accounts?.id) {
-                    initGoogleSignIn();
-                } else {
-                    setTimeout(waitForGoogle, 100);
-                }
-            };
-
-            const initGoogleSignIn = () => {
-                window.google.accounts.id.initialize({
-                    client_id: googleClientId,
-                    callback: async (response) => {
-                        try {
-                            // Use the ID token from Google to sign in with Supabase
-                            const { data, error } = await supabase.auth.signInWithIdToken({
-                                provider: 'google',
-                                token: response.credential,
-                            });
-
-                            if (error) {
-                                reject(error);
-                                return;
-                            }
-                            resolve(data);
-                        } catch (err) {
-                            reject(err);
-                        }
-                    },
-                    auto_select: false,
-                    context: 'signin',
-                });
-
-                // Trigger the Google One Tap / popup
-                window.google.accounts.id.prompt((notification) => {
-                    if (notification.isNotDisplayed()) {
-                        // If One Tap is not displayed (e.g., user dismissed before),
-                        // fall back to the button-based flow
-                        const btnDiv = document.createElement('div');
-                        btnDiv.id = 'google-signin-btn-hidden';
-                        btnDiv.style.position = 'fixed';
-                        btnDiv.style.top = '50%';
-                        btnDiv.style.left = '50%';
-                        btnDiv.style.transform = 'translate(-50%, -50%)';
-                        btnDiv.style.zIndex = '10000';
-                        document.body.appendChild(btnDiv);
-
-                        window.google.accounts.id.renderButton(btnDiv, {
-                            type: 'standard',
-                            theme: 'filled_black',
-                            size: 'large',
-                            text: 'signin_with',
-                            shape: 'pill',
-                            width: 300,
-                        });
-
-                        // Auto-click the rendered button
-                        setTimeout(() => {
-                            const btn = btnDiv.querySelector('div[role="button"]');
-                            if (btn) btn.click();
-                            // Clean up after a delay
-                            setTimeout(() => btnDiv.remove(), 30000);
-                        }, 100);
-                    }
-                });
-            };
-
-            waitForGoogle();
+    // Handle the Google ID token credential from Google Identity Services
+    const handleGoogleCredential = useCallback(async (credential) => {
+        const { data, error } = await supabase.auth.signInWithIdToken({
+            provider: 'google',
+            token: credential,
         });
-    };
+
+        if (error) throw error;
+        return data;
+    }, []);
+
+    // Initialize Google Identity Services button on a given DOM element
+    const initGoogleButton = useCallback((buttonElement) => {
+        if (!buttonElement || !window.google?.accounts?.id) return;
+
+        const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+        if (!googleClientId) {
+            console.error('VITE_GOOGLE_CLIENT_ID not configured');
+            return;
+        }
+
+        window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: async (response) => {
+                // This will be handled by the component via handleGoogleCredential
+                const event = new CustomEvent('google-credential', { detail: response.credential });
+                window.dispatchEvent(event);
+            },
+            auto_select: false,
+            use_fedcm_for_prompt: false, // Disable FedCM to avoid issues
+        });
+
+        window.google.accounts.id.renderButton(buttonElement, {
+            type: 'standard',
+            theme: 'filled_black',
+            size: 'large',
+            text: 'continue_with',
+            shape: 'pill',
+            width: buttonElement.offsetWidth || 380,
+            locale: 'en',
+        });
+    }, []);
 
     const signOut = async () => {
         const { error } = await supabase.auth.signOut();
@@ -197,7 +160,8 @@ export const AuthProvider = ({ children }) => {
         loading,
         signUp,
         signIn,
-        signInWithGoogle,
+        handleGoogleCredential,
+        initGoogleButton,
         signOut,
         resetPassword,
         updatePassword
